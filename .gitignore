@@ -1,0 +1,6 @@
+target/
+deploy.zip
+.env
+.DS_Store
+.idea/
+*.iml

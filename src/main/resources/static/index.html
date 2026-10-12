@@ -1,0 +1,40 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Taskflow</title>
+  <style>
+    body { font-family: system-ui; max-width: 36rem; margin: 3rem auto; padding: 0 1rem; }
+    li { margin: .4rem 0; } .done span { text-decoration: line-through; color: #888; }
+    form { display: flex; gap: .5rem; } input { flex: 1; padding: .4rem; }
+  </style>
+</head>
+<body>
+  <h1>Taskflow</h1>
+  <form id="f"><input id="t" placeholder="New task" required><button>Add</button></form>
+  <ul id="list"></ul>
+  <script>
+    const api = "/api/tasks";
+    async function load() {
+      const tasks = await (await fetch(api)).json();
+      const ul = document.getElementById("list"); ul.innerHTML = "";
+      for (const t of tasks) {
+        const li = document.createElement("li"); if (t.done) li.className = "done";
+        const cb = Object.assign(document.createElement("input"), { type: "checkbox", checked: t.done });
+        cb.onchange = async () => { await fetch(`${api}/${t.id}`, { method: "PUT", headers: {"Content-Type":"application/json"}, body: JSON.stringify({ title: t.title, done: cb.checked }) }); load(); };
+        const span = document.createElement("span"); span.textContent = " " + t.title + " ";
+        const del = document.createElement("button"); del.textContent = "x";
+        del.onclick = async () => { await fetch(`${api}/${t.id}`, { method: "DELETE" }); load(); };
+        li.append(cb, span, del); ul.append(li);
+      }
+    }
+    document.getElementById("f").onsubmit = async e => {
+      e.preventDefault(); const i = document.getElementById("t");
+      await fetch(api, { method: "POST", headers: {"Content-Type":"application/json"}, body: JSON.stringify({ title: i.value }) });
+      i.value = ""; load();
+    };
+    load();
+  </script>
+</body>
+</html>

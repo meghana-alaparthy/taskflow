@@ -1,0 +1,61 @@
+name: Build and deploy to AWS Elastic Beanstalk
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  id-token: write   # needed for OIDC login to AWS
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: corretto
+          java-version: 21
+          cache: maven
+      - name: Build and test
+        run: ./mvnw -B verify
+      - name: Package bundle (jar + Procfile)
+        run: zip -j deploy.zip target/app.jar Procfile
+      - uses: actions/upload-artifact@v4
+        with:
+          name: deploy-bundle
+          path: deploy.zip
+
+  deploy:
+    needs: build
+    if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
+    runs-on: ubuntu-latest
+    env:
+      AWS_REGION: ${{ vars.AWS_REGION }}
+      EB_APP: ${{ vars.EB_APP }}
+      EB_ENV: ${{ vars.EB_ENV }}
+      EB_BUCKET: ${{ vars.EB_BUCKET }}
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: deploy-bundle
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+      - name: Upload and deploy
+        run: |
+          VERSION="${GITHUB_SHA::8}-${GITHUB_RUN_NUMBER}"
+          aws s3 cp deploy.zip "s3://$EB_BUCKET/$EB_APP/$VERSION.zip"
+          aws elasticbeanstalk create-application-version \
+            --application-name "$EB_APP" \
+            --version-label "$VERSION" \
+            --source-bundle S3Bucket="$EB_BUCKET",S3Key="$EB_APP/$VERSION.zip"
+          aws elasticbeanstalk update-environment \
+            --environment-name "$EB_ENV" \
+            --version-label "$VERSION"
+          aws elasticbeanstalk wait environment-updated \
+            --environment-names "$EB_ENV"
